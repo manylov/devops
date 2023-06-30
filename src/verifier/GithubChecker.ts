@@ -1,6 +1,7 @@
 /*
  * Copyright (c) 2021. Gearbox
  */
+
 import axios from "axios";
 
 import { LoggedDeployer } from "../logger/loggedDeployer";
@@ -36,6 +37,9 @@ export interface FullContractAndImportsResult {
   sources: Array<ContractCheckResult>;
 }
 
+// eslint-disable-next-line no-promise-executor-return
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
 export class GithubChecker extends LoggedDeployer {
   protected readonly _audits = audits;
 
@@ -62,7 +66,7 @@ export class GithubChecker extends LoggedDeployer {
     }`;
     const source = await axios.get(url);
     if (!source.data.result || source.data.status !== "1") {
-      console.error(source);
+      // console.error(source);
       throw new Error("Cant get source from etherscan");
     }
 
@@ -83,7 +87,10 @@ export class GithubChecker extends LoggedDeployer {
 
     for (let [entry, data] of Object.entries(etherscanData.sources)) {
       console.log("checking entry", entry);
+
       if (!entry.startsWith("@gearbox-protocol")) continue;
+
+      // console.log("checking entry", entry);
 
       const contract = entry.split("/").pop();
 
@@ -92,15 +99,18 @@ export class GithubChecker extends LoggedDeployer {
       }
 
       const contractNameWithSol = entry.split("/").pop();
+      // console.log("contractNameWithSol", contractNameWithSol);
       if (!contractNameWithSol) {
         continue;
       }
 
       const contractName = contractNameWithSol.replace(".sol", "");
 
-      if (contractName !== mainContractName) continue;
+      // if (contractName !== mainContractName) continue;
 
       const repoName = entry.split("/")[1];
+
+      // console.log("repoName", repoName);
 
       const contractCheckResult: ContractCheckResult = {
         contract,
@@ -117,6 +127,12 @@ export class GithubChecker extends LoggedDeployer {
       for (const audit of audits) {
         console.log("checking audit", audit, "for entry", entry);
 
+        // if (
+        //   audit.type === "commit" &&
+        //   audit.commit === "c6ca919d46dcd82fa69c89316d9ff969e89bd3f6"
+        // )
+        //   continue;
+
         let replacementPath: string;
 
         if (audit.type === "commit") {
@@ -132,21 +148,32 @@ export class GithubChecker extends LoggedDeployer {
           )
           .replace(repo, replacementPath);
 
+        console.log("githubRawUrl", githubRawUrl);
+
         let githubSource: string;
 
         try {
           githubSource = await this.getGithubSource(githubRawUrl);
+          await sleep(1000);
         } catch (e) {
           this._logger.error(`get github source error: ${e}`);
           continue;
         }
 
+        console.log("github source downloaded");
+
         let identical = false;
 
         if (data.content.trim() !== githubSource.trim()) {
+          // const diff = Diff.diffChars(data.content.trim(), githubSource.trim());
+
+          // diff.forEach(part => {
+          //   console.log({ part });
+          // });
+
           this._logger.error(`Contract ${entry} is not identical!`);
-          this._logger.info(`Etherscan version:\n${data.content}`);
-          this._logger.info(`Github version:\n${githubSource}`);
+          // this._logger.info(`Etherscan version:\n${data.content}`);
+          // this._logger.info(`Github version:\n${githubSource}`);
         } else {
           identical = true;
           this._logger.debug(`Contract ${entry} is identical with main branch`);
@@ -158,7 +185,9 @@ export class GithubChecker extends LoggedDeployer {
           .replace("https://raw.githubusercontent.com", "https://github.com")
           .replace(repo, repo + "/blob");
 
-        console.log("githubUrl", githubUrl);
+        // console.log("githubUrl", githubUrl);
+
+        console.log("identical", identical);
 
         if (identical) {
           result = {
@@ -166,22 +195,21 @@ export class GithubChecker extends LoggedDeployer {
             audit,
             githubUrl,
           };
+          contractCheckResult.reportsVerificationResult.push(result);
         } else {
-          result = {
-            identical: false,
-            githubUrl: githubRawUrl,
-          };
+          // result = {
+          //   identical: false,
+          //   githubUrl: githubUrl,
+          // };
         }
 
-        console.log("result", result);
-
-        contractCheckResult.reportsVerificationResult.push(result);
+        // console.log("result", result);
       }
 
       fullContractSourcesCheckResult.sources.push(contractCheckResult);
     }
 
-    console.log("end", JSON.stringify(fullContractSourcesCheckResult, null, 2));
+    // console.log(JSON.stringify(fullContractSourcesCheckResult, null, 2));
 
     return fullContractSourcesCheckResult;
   }
